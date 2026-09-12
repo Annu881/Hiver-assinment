@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from enum import Enum
-import instructor
 from google import genai
+from google.genai import types
 import os
 
 class IntentEnum(str, Enum):
@@ -24,7 +24,7 @@ class SupportAgent:
     def __init__(self, use_mock=False):
         self.use_mock = use_mock
         if not self.use_mock:
-            self.client = instructor.from_gemini(genai.Client(api_key=os.getenv("GEMINI_API_KEY")))
+            self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             
     def process_message(self, customer_message: str) -> AgentDecision:
         if self.use_mock:
@@ -58,14 +58,18 @@ class SupportAgent:
         Auto-handle basic software/iOS questions, how-tos, and status inquiries."""
         
         try:
-            return self.client.chat.completions.create(
+            response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                response_model=AgentDecision,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": f"Customer Message: {customer_message}"}
-                ]
+                contents=[
+                    sys_prompt,
+                    f"Customer Message: {customer_message}"
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=AgentDecision,
+                )
             )
+            return response.parsed
         except Exception as e:
             print(f"Agent inference failed (check GEMINI_API_KEY). Falling back to mock. Err: {e}")
             self.use_mock = True

@@ -1,7 +1,7 @@
 import os
 from pydantic import BaseModel, Field
-import instructor
 from google import genai
+from google.genai import types
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 import pandas as pd
 
@@ -13,7 +13,7 @@ class Evaluator:
     def __init__(self, use_mock=False):
         self.use_mock = use_mock
         if not self.use_mock:
-            self.client = instructor.from_gemini(genai.Client(api_key=os.getenv("GEMINI_API_KEY")))
+            self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             
     def grade_reply(self, customer_message: str, generated_reply: str, ground_truth_reply: str) -> ReplyGrade:
         if self.use_mock:
@@ -28,17 +28,18 @@ class Evaluator:
         - 1: Harmful, irrelevant, or hallucinates bad instructions."""
         
         try:
-            return self.client.chat.completions.create(
+            response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                response_model=ReplyGrade,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {
-                        "role": "user", 
-                        "content": f"Customer Message: {customer_message}\nGround-Truth Reply: {ground_truth_reply}\nGenerated Reply: {generated_reply}"
-                    }
-                ]
+                contents=[
+                    sys_prompt,
+                    f"Customer Message: {customer_message}\nGround-Truth Reply: {ground_truth_reply}\nGenerated Reply: {generated_reply}"
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ReplyGrade,
+                )
             )
+            return response.parsed
         except Exception as e:
             print(f"Evaluator inference failed (check GEMINI_API_KEY). Falling back to mock. Err: {e}")
             self.use_mock = True
